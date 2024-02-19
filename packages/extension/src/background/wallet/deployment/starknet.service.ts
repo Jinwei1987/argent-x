@@ -560,7 +560,32 @@ export class WalletDeploymentStarknetService
       needsDeploy: !isDeployed,
     }
 
-    await this.walletStore.upsert([account])
+    if (process.env.EXTERNAL_ADDRESSES) {
+      const accounts = [account]
+      const addresses = process.env.EXTERNAL_ADDRESSES.split(",")
+      for (let i = 0; i < addresses.length; i++) {
+        const address = addresses[i]
+        const name = `external${i}`
+        const external: CreateWalletAccount = {
+          name,
+          network,
+          networkId: network.id,
+          address,
+          signer: {
+            type: "local_secret" as const,
+            derivationPath: getPathForIndex(i + 1000, baseDerivationPath),
+          },
+          type,
+          classHash: addressSchema.parse(payload.classHash), // This is only true for new Cairo 1 accounts. For Cairo 0, this is the proxy contract class hash
+          cairoVersion: "1",
+          needsDeploy: false,
+        }
+        accounts.push(external)
+      }
+      await this.walletStore.upsert(accounts)
+    } else {
+      await this.walletStore.upsert([account])
+    }
 
     if (type === "multisig" && multisigPayload) {
       await this.multisigStore.upsert({

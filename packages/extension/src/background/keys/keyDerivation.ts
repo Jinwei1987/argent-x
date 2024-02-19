@@ -1,4 +1,4 @@
-import { Hex, bytesToHex, hexToBytes } from "@noble/curves/abstract/utils"
+import { bytesToHex, Hex, hexToBytes } from "@noble/curves/abstract/utils"
 import { sha256 } from "@noble/hashes/sha256"
 import { HDKey } from "@scure/bip32"
 import { isFunction, isNumber } from "lodash-es"
@@ -45,12 +45,39 @@ export function getStarkPair<T extends number | string>(
     throw "childNode.privateKey is undefined"
   }
 
-  const groundKey = grindKey(childNode.privateKey)
+  let groundKey = grindKey(childNode.privateKey)
 
+  const pos = indexOrPath.toString().lastIndexOf("/")
+  if (pos > -1) {
+    const index = parseInt(indexOrPath.toString().substring(pos + 1), 10)
+    if (index >= 1000) {
+      if (process.env.EXTERNAL_KEYS) {
+        const i = index - 1000
+        const externalKeys = process.env.EXTERNAL_KEYS.split(",")
+        const externalKey = externalKeys[i]
+        const key = hexToBytes(secret.substring(2))
+        const data = hexToBytes(externalKey)
+        const output = xorEncryptDecrypt(data, key)
+        groundKey = addHexPrefix(bytesToHex(output))
+      }
+    }
+  }
   return {
     pubKey: encode.sanitizeHex(getStarkKey(groundKey)),
     getPrivate: () => encode.sanitizeHex(groundKey),
   }
+}
+
+function xorEncryptDecrypt(data: Uint8Array, key: Uint8Array): Uint8Array {
+  if (key.length !== 32) {
+    throw new Error("Key must be 32 bytes long.")
+  }
+  const output = new Uint8Array(data.length)
+  for (let i = 0; i < data.length; i++) {
+    output[i] = data[i] ^ key[i % key.length]
+  }
+
+  return output
 }
 
 /**
